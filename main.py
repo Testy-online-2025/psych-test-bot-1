@@ -134,7 +134,8 @@ async def show_result(message: Message, user_id: int):
     text = f"💔 Ваш результат: **{result['title']}**\n\n{result['text']}\n\n{TEST_DATA['guide_text']}"
 
     # Реферальная ссылка
-    ref_link = f"https://t.me/{(await bot.me).username}?start=ref{user_id}"
+    bot_info = await bot.get_me()
+    ref_link = f"https://t.me/{bot_info.username}?start=ref{user_id}"
     text += f"\n\n✨ Хотите получить **подробный гайд**? Отправьте эту ссылку другу:\n{ref_link}\n\nКак только друг пройдёт тест — гайд пришлют вам!"
 
     # Кнопка доната
