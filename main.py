@@ -89,7 +89,6 @@ async def cmd_start(message: Message, state: FSMContext):
         if ref.startswith("ref"):
             try:
                 referrer_id = int(ref[3:])
-                # Уведомляем реферера
                 if referrer_id in user_sessions:
                     user_sessions[referrer_id]["friends_completed"] = user_sessions[referrer_id].get("friends_completed", 0) + 1
                     fc = user_sessions[referrer_id]["friends_completed"]
@@ -179,7 +178,7 @@ async def show_result(message: Message, user_id: int):
     score = user_sessions[user_id]["score"]
     result = next((r for r in TEST_DATA["results"] if r["min"] <= score <= r["max"]), TEST_DATA["results"][-1])
 
-    ref_link = f"t.me/psych_tests_bot?start=ref{user_id}"
+    ref_link = f"https://t.me/psych_tests_bot?start=ref{user_id}"
 
     if score <= 25:
         call_to_action = f"✨ Хотите сделать ваши отношения ещё глубже и осознаннее? Отправьте эту ссылку **2 друзьям**:\n{ref_link}\n\nКогда оба пройдут тест — напишите email, и мы вышлем персональный гайд по укреплению здоровых отношений!"
