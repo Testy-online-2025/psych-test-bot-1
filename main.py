@@ -15,6 +15,7 @@ from aiogram.filters import Command, CommandStart
 
 logging.basicConfig(level=logging.INFO)
 
+# === ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID")
 DONATE_SBP = os.getenv("DONATE_SBP", "https://example.com")
@@ -25,14 +26,19 @@ storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 router = Router()
 
+# Загрузка теста
 with open("data/test1.json", "r", encoding="utf-8") as f:
     TEST_DATA = json.load(f)
 
+# FSM
 class TestState(StatesGroup):
     answering = State()
     waiting_for_email = State()
 
+# Временное хранилище
 user_sessions = {}
+
+# === ФУНКЦИИ ===
 
 async def send_to_sheet(action: str, user_id: int, **kwargs):
     if not GOOGLE_SCRIPT_URL:
@@ -51,29 +57,59 @@ async def check_subscription(user_id: int) -> bool:
     except:
         return False
 
+def get_main_menu():
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="🧠 Психологические тесты")]],
+        resize_keyboard=True,
+        one_time_keyboard=False
+    )
+
+def get_tests_menu():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💔 Тип привязанности", callback_data="test_attachment")],
+        [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_menu")]
+    ])
+
+def get_back_button():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_tests")]
+    ])
+
+# === ХЕНДЛЕРЫ ===
+
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
     user_id = message.from_user.id
     username = message.from_user.username or ""
     
+    # Обработка реферала
     referrer_id = None
     if len(message.text.split()) > 1:
         ref = message.text.split()[1]
         if ref.startswith("ref"):
             try:
                 referrer_id = int(ref[3:])
+                # Уведомляем реферера
+                if referrer_id in user_sessions:
+                    user_sessions[referrer_id]["friends_completed"] = user_sessions[referrer_id].get("friends_completed", 0) + 1
+                    fc = user_sessions[referrer_id]["friends_completed"]
+                    if fc == 1:
+                        await bot.send_message(referrer_id, "✅ Один друг уже прошёл тест! Ждём второго — и вы получите гайд.")
+                    elif fc >= 2:
+                        await bot.send_message(referrer_id, "🎉 Два друга прошли тест! Напишите свой email, и мы вышлем гайд.")
             except:
                 pass
 
-    user_sessions.setdefault(user_id, {
+    user_sessions[user_id] = {
         "score": 0,
         "current_question": 0,
         "done": False,
         "referrer": referrer_id,
         "friends_completed": 0
-    })
+    }
 
-    ref_link = f"https://t.me/psych_tests_bot?start=ref{user_id}"  # ← ПРАВИЛЬНАЯ ССЫЛКА!
+    # Отправка в Google Sheets
+    ref_link = f"https://t.me/psych_tests_bot?start=ref{user_id}"
     await send_to_sheet("new_user", user_id, username=username, ref_link=ref_link)
 
     if not await check_subscription(user_id):
@@ -86,29 +122,17 @@ async def cmd_start(message: Message, state: FSMContext):
 
     await message.answer("Выберите раздел:", reply_markup=get_main_menu())
 
-def get_main_menu():
-    return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="🧠 Психологические тесты")]],
-        resize_keyboard=True,
-        one_time_keyboard=False
-    )
-
 @router.message(F.text == "🧠 Психологические тесты")
 async def show_tests(message: Message):
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💔 Тип привязанности", callback_data="test_attachment")],
-        [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_menu")]
-    ])
-    await message.answer("Выберите тест:", reply_markup=kb)
+    await message.answer("Выберите тест:", reply_markup=get_tests_menu())
 
 @router.callback_query(F.data == "back_to_menu")
 async def back_to_menu(callback: CallbackQuery):
-    kb = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="🧠 Психологические тесты")]],
-        resize_keyboard=True,
-        one_time_keyboard=False
-    )
-    await callback.message.answer("Выберите раздел:", reply_markup=kb)
+    await callback.message.answer("Выберите раздел:", reply_markup=get_main_menu())
+
+@router.callback_query(F.data == "back_to_tests")
+async def back_to_tests(callback: CallbackQuery):
+    await callback.message.answer("Выберите тест:", reply_markup=get_tests_menu())
 
 @router.callback_query(F.data == "test_attachment")
 async def start_test(callback: CallbackQuery, state: FSMContext):
@@ -116,7 +140,7 @@ async def start_test(callback: CallbackQuery, state: FSMContext):
     fake_count = random.randint(1200, 1500)
     await callback.message.answer(
         f"Вы — 1 из {fake_count} прошедших тест в этом месяце! 🌟\n\n{TEST_DATA['description']}",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_tests")]]
+        reply_markup=get_back_button()
     )
     await ask_question(callback.message, user_id, state)
 
@@ -149,25 +173,22 @@ async def handle_answer(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         await ask_question(callback.message, user_id, state)
     elif data == "back_to_tests":
-        await callback.message.answer("Выберите тест:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="💔 Тип привязанности", callback_data="test_attachment")],
-            [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_menu")]
-        ]))
+        await callback.message.answer("Выберите тест:", reply_markup=get_tests_menu())
 
 async def show_result(message: Message, user_id: int):
     score = user_sessions[user_id]["score"]
     result = next((r for r in TEST_DATA["results"] if r["min"] <= score <= r["max"]), TEST_DATA["results"][-1])
 
-    ref_link = f"https://t.me/psych_tests_bot?start=ref{user_id}"  # ← ПРАВИЛЬНАЯ ССЫЛКА!
+    ref_link = f"https://t.me/psych_tests_bot?start=ref{user_id}"
 
     if score <= 25:
-        call_to_action = f"✨ Хотите сделать ваши отношения ещё глубже и осознаннее? Отправьте эту ссылку другу:\n{ref_link}\n\nКак только друг пройдёт тест — вы получите персональный гайд по укреплению здоровых отношений!"
+        call_to_action = f"✨ Хотите сделать ваши отношения ещё глубже и осознаннее? Отправьте эту ссылку **2 друзьям**:\n{ref_link}\n\nКогда оба пройдут тест — напишите email, и мы вышлем персональный гайд по укреплению здоровых отношений!"
     elif score <= 50:
-        call_to_action = f"✨ Хотите понять, как выйти из тревожной привязанности? Отправьте эту ссылку 2 друзьям:\n{ref_link}\n\nКогда оба пройдут тест — напишите email, и мы вышлем гайд бесплатно!"
+        call_to_action = f"✨ Хотите выйти из тревожной привязанности? Отправьте эту ссылку **2 друзьям**:\n{ref_link}\n\nКогда оба пройдут тест — напишите email, и мы вышлем гайд бесплатно!"
     elif score <= 75:
-        call_to_action = f"✨ Вам срочно нужен инструмент, чтобы выйти из эмоциональной ловушки. Отправьте эту ссылку 2 друзьям:\n{ref_link}\n\nКогда оба пройдут тест — напишите email, и мы вышлем гайд бесплатно!"
+        call_to_action = f"✨ Вам срочно нужен инструмент, чтобы выйти из эмоциональной ловушки. Отправьте эту ссылку **2 друзьям**:\n{ref_link}\n\nКогда оба пройдут тест — напишите email, и мы вышлем гайд бесплатно!"
     else:
-        call_to_action = f"✨ Это кризис, и вам нужна поддержка. Отправьте эту ссылку 2 друзьям:\n{ref_link}\n\nКогда оба пройдут тест — напишите email, и мы вышлем гайд бесплатно!"
+        call_to_action = f"✨ Это кризис, и вам нужна поддержка. Отправьте эту ссылку **2 друзьям**:\n{ref_link}\n\nКогда оба пройдут тест — напишите email, и мы вышлем гайд с первыми шагами к восстановлению себя."
 
     text = f"💔 Ваш результат: **{result['title']}**\n\n{result['text']}\n\n{call_to_action}"
 
@@ -212,6 +233,8 @@ async def check_sub(callback: CallbackQuery, state: FSMContext):
         await ask_question(callback.message, user_id, state)
     else:
         await callback.answer("Вы не подписаны! Подпишитесь, пожалуйста.", show_alert=True)
+
+# === ЗАПУСК ===
 
 async def main():
     dp.include_router(router)
