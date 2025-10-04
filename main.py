@@ -203,4 +203,56 @@ async def show_result(message: Message, user_id: int):
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📧 Отправить email", callback_data="request_email")],
-        [InlineKeyboardButton(text="💝 Под
+        [InlineKeyboardButton(text="💝 Поддержать автора", url=DONATE_SBP)],
+        [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_tests")]
+    ])
+    await message.answer(text, reply_markup=kb, parse_mode="Markdown")
+
+# === СБОР EMAIL ===
+
+@router.callback_query(F.data == "request_email")
+async def request_email(callback: CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    friends = user_sessions[user_id].get("friends_completed", 0)
+    if friends < 2:
+        await callback.message.answer(f"Пока что прошёл(и) {friends} друг(а). Нужно 2, чтобы получить гайд.")
+        return
+
+    await callback.message.answer(
+        "📧 Введите ваш email:\n\n"
+        "✅ Нажимая «Отправить», вы даёте согласие на обработку персональных данных в соответствии с ФЗ-152."
+    )
+    await state.set_state(TestState.waiting_for_email)
+
+@router.message(TestState.waiting_for_email)
+async def handle_email(message: Message, state: FSMContext):
+    email = message.text.strip()
+    if "@" not in email or "." not in email:
+        await message.answer("Некорректный email. Попробуйте снова:")
+        return
+
+    user_id = message.from_user.id
+    await send_to_sheet("email_submitted", user_id, email=email)
+    await message.answer("Спасибо! Гайд придёт на ваш email в ближайшее время.")
+    await state.clear()
+
+# === ПРОВЕРКА ПОДПИСКИ ===
+
+@router.callback_query(F.data == "check_sub")
+async def check_sub(callback: CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    if await check_subscription(user_id):
+        await callback.message.edit_text("Спасибо за подписку! ❤️\nНачинаем тест...")
+        await ask_question(callback.message, user_id, state)
+    else:
+        await callback.answer("Вы не подписаны! Подпишитесь, пожалуйста.", show_alert=True)
+
+# === ЗАПУСК ===
+
+async def main():
+    dp.include_router(router)
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
