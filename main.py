@@ -98,7 +98,7 @@ async def cmd_start(message: Message, state: FSMContext):
         "friends_completed": 0
     }
     # Отправка в Google Sheets
-    ref_link = f"https://t.me/psych_tests_bot?start=ref{user_id}"
+    ref_link = f"https://t.me/my_psych_tester_bot?start=ref{user_id}"
     await send_to_sheet("new_user", user_id, username=username, ref_link=ref_link)
     if not await check_subscription(user_id):
         kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -188,7 +188,7 @@ async def handle_answer(callback: CallbackQuery, state: FSMContext):
 async def show_result(message: Message, user_id: int):
     score = user_sessions[user_id]["score"]
     result = next((r for r in TEST_DATA["results"] if r["min"] <= score <= r["max"]), TEST_DATA["results"][-1])
-    ref_link = f"https://t.me/psych_tests_bot?start=ref{user_id}"
+    ref_link = f"https://t.me/my_psych_tester_bot?start=ref{user_id}"
     if score <= 25:
         call_to_action = f"✨ Хотите сделать ваши отношения ещё глубже и осознаннее? Отправьте эту ссылку **2 друзьям**:\n{ref_link}\nКогда оба пройдут тест — напишите email, и мы вышлем персональный гайд по укреплению здоровых отношений!"
     elif score <= 50:
