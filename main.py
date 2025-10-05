@@ -12,8 +12,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.filters import Command, CommandStart
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
-from aiohttp import web
 logging.basicConfig(level=logging.INFO)
 # === ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -94,7 +92,7 @@ async def cmd_start(message: Message, state: FSMContext):
         "friends_completed": 0
     }
     # Отправка в Google Sheets
-    ref_link = f"https://t.me/psych_tests_bot?start=ref{user_id}"
+    ref_link = f"https://t.me/my_psych_tester_bot?start=ref{user_id}"  # ← ПРАВИЛЬНАЯ ССЫЛКА!
     await send_to_sheet("new_user", user_id, username=username, ref_link=ref_link)
     if not await check_subscription(user_id):
         kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -118,8 +116,8 @@ async def start_test(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     fake_count = random.randint(1200, 1500)
     await callback.message.answer(
-        f"Вы — 1 из {fake_count} прошедших тест в этом месяце! 🌟
-{TEST_DATA['description']}",
+        f"Вы — 1 из {fake_count} прошедших тест в этом месяце! 🌟\n"
+        f"{TEST_DATA['description']}",
         reply_markup=get_back_button()
     )
     await ask_question(callback.message, user_id, state)
@@ -137,8 +135,8 @@ async def ask_question(message: Message, user_id: int, state: FSMContext):
         [InlineKeyboardButton(text=f"Г) {question['options'][3]}", callback_data="ans_3")],
         [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_tests")]
     ])
-    await message.answer(f"Вопрос {q_index + 1} из {len(TEST_DATA['questions'])}:
-{question['text']}", reply_markup=kb)
+    await message.answer(f"Вопрос {q_index + 1} из {len(TEST_DATA['questions'])}:\n"
+                         f"{question['text']}", reply_markup=kb)
     await state.set_state(TestState.answering)
 @router.callback_query(TestState.answering)
 async def handle_answer(callback: CallbackQuery, state: FSMContext):
@@ -155,26 +153,26 @@ async def handle_answer(callback: CallbackQuery, state: FSMContext):
 async def show_result(message: Message, user_id: int):
     score = user_sessions[user_id]["score"]
     result = next((r for r in TEST_DATA["results"] if r["min"] <= score <= r["max"]), TEST_DATA["results"][-1])
-    ref_link = f"https://t.me/psych_tests_bot?start=ref{user_id}"
+    ref_link = f"https://t.me/my_psych_tester_bot?start=ref{user_id}"  # ← ПРАВИЛЬНАЯ ССЫЛКА!
     if score <= 25:
-        call_to_action = f"✨ Хотите сделать ваши отношения ещё глубже и осознаннее? Отправьте эту ссылку **2 друзьям**:
-{ref_link}
-Когда оба пройдут тест — напишите email, и мы вышлем персональный гайд по укреплению здоровых отношений!"
+        call_to_action = f"✨ Хотите сделать ваши отношения ещё глубже и осознаннее? Отправьте эту ссылку **2 друзьям**:\n" \
+                         f"{ref_link}\n" \
+                         f"Когда оба пройдут тест — напишите email, и мы вышлем персональный гайд по укреплению здоровых отношений!"
     elif score <= 50:
-        call_to_action = f"✨ Хотите выйти из тревожной привязанности? Отправьте эту ссылку **2 друзьям**:
-{ref_link}
-Когда оба пройдут тест — напишите email, и мы вышлем гайд бесплатно!"
+        call_to_action = f"✨ Хотите выйти из тревожной привязанности? Отправьте эту ссылку **2 друзьям**:\n" \
+                         f"{ref_link}\n" \
+                         f"Когда оба пройдут тест — напишите email, и мы вышлем гайд бесплатно!"
     elif score <= 75:
-        call_to_action = f"✨ Вам срочно нужен инструмент, чтобы выйти из эмоциональной ловушки. Отправьте эту ссылку **2 друзьям**:
-{ref_link}
-Когда оба пройдут тест — напишите email, и мы вышлем гайд бесплатно!"
+        call_to_action = f"✨ Вам срочно нужен инструмент, чтобы выйти из эмоциональной ловушки. Отправьте эту ссылку **2 друзьям**:\n" \
+                         f"{ref_link}\n" \
+                         f"Когда оба пройдут тест — напишите email, и мы вышлем гайд бесплатно!"
     else:
-        call_to_action = f"✨ Это кризис, и вам нужна поддержка. Отправьте эту ссылку **2 друзьям**:
-{ref_link}
-Когда оба пройдут тест — напишите email, и мы вышлем гайд с первыми шагами к восстановлению себя."
-    text = f"💔 Ваш результат: **{result['title']}**
-{result['text']}
-{call_to_action}"
+        call_to_action = f"✨ Это кризис, и вам нужна поддержка. Отправьте эту ссылку **2 друзьям**:\n" \
+                         f"{ref_link}\n" \
+                         f"Когда оба пройдут тест — напишите email, и мы вышлем гайд с первыми шагами к восстановлению себя."
+    text = f"💔 Ваш результат: **{result['title']}**\n" \
+           f"{result['text']}\n" \
+           f"{call_to_action}"
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📧 Отправить email", callback_data="request_email")],
         [InlineKeyboardButton(text="💝 Поддержать автора", url=DONATE_SBP)],
@@ -189,8 +187,7 @@ async def request_email(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer(f"Пока что прошёл(и) {friends} друг(а). Нужно 2, чтобы получить гайд.")
         return
     await callback.message.answer(
-        "📧 Введите ваш email:
-"
+        "📧 Введите ваш email:\n"
         "✅ Нажимая «Отправить», вы даёте согласие на обработку персональных данных в соответствии с ФЗ-152."
     )
     await state.set_state(TestState.waiting_for_email)
@@ -208,35 +205,15 @@ async def handle_email(message: Message, state: FSMContext):
 async def check_sub(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     if await check_subscription(user_id):
-        await callback.message.edit_text("Спасибо за подписку! ❤️
-Начинаем тест...")
+        await callback.message.edit_text("Спасибо за подписку! ❤️\n"
+                                         "Начинаем тест...")
         await ask_question(callback.message, user_id, state)
     else:
         await callback.answer("Вы не подписаны! Подпишитесь, пожалуйста.", show_alert=True)
-# === ЗАПУСК ДЛЯ RENDER.COM ===
-async def on_startup(bot: Bot):
-    await bot.delete_webhook(drop_pending_updates=True)
-    # Укажи URL твоего Render сервиса
-    webhook_url = "https://psych-test-bot-1.onrender.com/webhook"
-    await bot.set_webhook(url=webhook_url)
-
-async def on_shutdown(bot: Bot):
-    await bot.delete_webhook()
-
+# === ЗАПУСК ===
 async def main():
-    dp.startup.register(on_startup)
-    dp.shutdown.register(on_shutdown)
-    app = web.Application()
-    SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path="/webhook")
-    setup_application(app, dp, bot=bot)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, host="0.0.0.0", port=int(os.getenv("PORT", 80)))
-    await site.start()
-    print("Bot is running on port 80...")
-    # Для отладки можно оставить while True, но Render лучше использовать graceful shutdown
-    # await asyncio.Event().wait()
-
+    dp.include_router(router)
+    await dp.start_polling(bot)
 if __name__ == "__main__":
     import asyncio
     asyncio.run(main())
