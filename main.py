@@ -16,7 +16,6 @@ from aiogram.filters import Command, CommandStart
 
 logging.basicConfig(level=logging.INFO)
 
-# === ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID")
 DONATE_SBP = os.getenv("DONATE_SBP", "https://example.com")
@@ -27,22 +26,16 @@ storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 router = Router()
 
-# Загрузка теста
 with open("data/test1.json", "r", encoding="utf-8") as f:
     TEST_DATA = json.load(f)
 
-# FSM
 class TestState(StatesGroup):
     answering = State()
     waiting_for_email = State()
 
-# Временное хранилище
 user_sessions = {}
 
-# === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
-
 def escape_markdown_v2(text: str) -> str:
-    """Экранирует спецсимволы для MarkdownV2 в Telegram"""
     escape_chars = r'_*[]()~`>#+-=|{}.!'
     return re.sub(r'([%s])' % re.escape(escape_chars), r'\\\1', text)
 
@@ -81,13 +74,20 @@ def get_back_button():
         [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_tests")]
     ])
 
-# === ХЕНДЛЕРЫ ===
+def get_email_button():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📧 Да, я хочу получить гайд", callback_data="request_email")]
+    ])
+
+def get_test_menu_after_email():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🧠 Выбрать другой тест", callback_data="back_to_tests")]
+    ])
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
     user_id = message.from_user.id
     username = message.from_user.username or ""
-    # Обработка реферала
     referrer_id = None
     if len(message.text.split()) > 1:
         ref = message.text.split()[1]
@@ -100,7 +100,7 @@ async def cmd_start(message: Message, state: FSMContext):
                     if fc == 1:
                         await bot.send_message(referrer_id, "✅ Один друг уже прошёл тест! Ждём второго — и вы получите гайд.")
                     elif fc >= 2:
-                        await bot.send_message(referrer_id, "🎉 Два друга прошли тест! Напишите свой email, и мы вышлем гайд.")
+                        await bot.send_message(referrer_id, "🎉 Два друга прошли тест! Напишите свой email, и мы вышлем гайд.", reply_markup=get_email_button())
             except:
                 pass
     user_sessions[user_id] = {
@@ -147,7 +147,7 @@ async def ask_question(message: Message, user_id: int, state: FSMContext):
     q_index = user_sessions[user_id]["current_question"]
     if q_index >= len(TEST_DATA["questions"]):
         user_sessions[user_id]["done"] = True
-        await state.clear()  # 👈 КРИТИЧЕСКИ ВАЖНО: сброс состояния
+        await state.clear()
         await show_result(message, user_id)
         return
     question = TEST_DATA["questions"][q_index]
@@ -180,28 +180,16 @@ async def show_result(message: Message, user_id: int):
     score = user_sessions[user_id]["score"]
     result = next((r for r in TEST_DATA["results"] if r["min"] <= score <= r["max"]), TEST_DATA["results"][-1])
     ref_link = f"https://t.me/my_psych_tester_bot?start=ref{user_id}"
-    if score <= 25:
-        call_to_action = f"✨ Хотите сделать ваши отношения ещё глубже и осознаннее? Отправьте эту ссылку **2 друзьям**:\n{ref_link}\nКогда оба пройдут тест — напишите email, и мы вышлем персональный гайд по укреплению здоровых отношений!"
-    elif score <= 50:
-        call_to_action = f"✨ Хотите выйти из тревожной привязанности? Отправьте эту ссылку **2 друзьям**:\n{ref_link}\nКогда оба пройдут тест — напишите email, и мы вышлем гайд бесплатно!"
-    elif score <= 75:
-        call_to_action = f"✨ Вам срочно нужен инструмент, чтобы выйти из эмоциональной ловушки. Отправьте эту ссылку **2 друзьям**:\n{ref_link}\nКогда оба пройдут тест — напишите email, и мы вышлем гайд бесплатно!"
-    else:
-        call_to_action = f"✨ Это кризис, и вам нужна поддержка. Отправьте эту ссылку **2 друзьям**:\n{ref_link}\nКогда оба пройдут тест — напишите email, и мы вышлем гайд с первыми шагами к восстановлению себя."
-
-    # Экранируем всё для MarkdownV2
+    call_to_action = f"✨ Отправьте эту ссылку **2 друзьям**:\n{ref_link}\nКогда оба пройдут тест — нажмите кнопку ниже, и мы вышлем гайд."
     escaped_title = escape_markdown_v2(result['title'])
     escaped_text = escape_markdown_v2(result['text'])
     escaped_call_to_action = escape_markdown_v2(call_to_action)
-
     text = f"💔 Ваш результат: *{escaped_title}*\n{escaped_text}\n{escaped_call_to_action}"
-
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📧 Отправить email", callback_data="request_email")],
+        [InlineKeyboardButton(text="📧 Получить гайд", callback_data="request_email")],
         [InlineKeyboardButton(text="💝 Поддержать автора", url=DONATE_SBP)],
         [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_tests")]
     ])
-
     await message.answer(text, reply_markup=kb, parse_mode="MarkdownV2")
 
 @router.callback_query(F.data == "request_email")
@@ -214,7 +202,7 @@ async def request_email(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer(
         "📧 Введите ваш email:\n"
         "✅ Нажимая «Отправить», вы даёте согласие на обработку персональных данных в соответствии с ФЗ-152.\n"
-        "❗ Гайд будет отправлен на этот email в течение 24 часов. Проверьте папку «Спам», если не получили письмо."
+        "❗️ Гайд будет отправлен на этот email в течение 24 часов. Проверьте папку «Спам», если не получили письмо."
     )
     await state.set_state(TestState.waiting_for_email)
 
@@ -225,8 +213,13 @@ async def handle_email(message: Message, state: FSMContext):
         await message.answer("Некорректный email. Попробуйте снова:")
         return
     user_id = message.from_user.id
-    await send_to_sheet("email_submitted", user_id, email=email)
-    await message.answer("Спасибо! Гайд придёт на ваш email в течение 24 часов. Проверьте папку «Спам», если не получили письмо.")
+    score = user_sessions.get(user_id, {}).get("score", 0)
+    # Отправляем в Google Таблицу email + score
+    await send_to_sheet("email_submitted", user_id, email=email, score=score)
+    await message.answer(
+        "Спасибо! Гайд придёт на ваш email в течение 24 часов. Проверьте папку «Спам», если не получили письмо.",
+        reply_markup=get_test_menu_after_email()
+    )
     await state.clear()
 
 @router.callback_query(F.data == "check_sub")
@@ -238,7 +231,6 @@ async def check_sub(callback: CallbackQuery, state: FSMContext):
     else:
         await callback.answer("Вы не подписаны! Подпишитесь, пожалуйста.", show_alert=True)
 
-# === ЗАПУСК ===
 async def main():
     dp.include_router(router)
     await dp.start_polling(bot)
