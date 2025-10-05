@@ -19,7 +19,7 @@ logging.basicConfig(level=logging.INFO)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID")
 DONATE_SBP = os.getenv("DONATE_SBP", "https://example.com")
-GOOGLE_SCRIPT_URL = os.getenv("GOOGLE_SCRIPT_URL", "")
+GOOGLE_SCRIPT_URL = os.getenv("GOOGLE_SCRIPT_URL", "https://script.google.com/macros/s/AKfycbxhRA_gOq0EfA3xSOioadk0htaB4XEMVfttZuviaOzt4SjLXTEBktp7X54s5PqYtaPwVw/exec")
 
 bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
@@ -81,7 +81,7 @@ def get_back_button():
 async def cmd_start(message: Message, state: FSMContext):
     user_id = message.from_user.id
     username = message.from_user.username or ""
-    
+
     # Обработка реферала
     referrer_id = None
     if len(message.text.split()) > 1:
@@ -108,7 +108,7 @@ async def cmd_start(message: Message, state: FSMContext):
     }
 
     # Отправка в Google Sheets
-    ref_link = f"t.me/psych_tests_bot?start=ref{user_id}"
+    ref_link = f"https://t.me/psych_tests_bot?start=ref{user_id}"
     await send_to_sheet("new_user", user_id, username=username, ref_link=ref_link)
 
     if not await check_subscription(user_id):
@@ -116,7 +116,15 @@ async def cmd_start(message: Message, state: FSMContext):
             [InlineKeyboardButton(text="Подписаться на канал", url=f"https://t.me/{CHANNEL_ID[1:]}")],
             [InlineKeyboardButton(text="✅ Проверить подписку", callback_data="check_sub")]
         ])
-        await message.answer("Пожалуйста, подпишитесь на наш канал, чтобы пройти тест ❤️", reply_markup=kb)
+        await message.answer(
+            "👋 Привет! Я — бот психологических тестов.\n\n"
+            "🧠 Здесь ты можешь:\n"
+            "• Пройти тест на тип привязанности\n"
+            "• Узнать, в отношениях ты — или в ловушке\n"
+            "• Получить персональный гайд бесплатно\n\n"
+            "❗ Чтобы начать — подпишись на наш канал и нажми «Психологические тесты».",
+            reply_markup=kb
+        )
         return
 
     await message.answer("Выберите раздел:", reply_markup=get_main_menu())
@@ -178,7 +186,7 @@ async def show_result(message: Message, user_id: int):
     score = user_sessions[user_id]["score"]
     result = next((r for r in TEST_DATA["results"] if r["min"] <= score <= r["max"]), TEST_DATA["results"][-1])
 
-    ref_link = f"t.me/psych_tests_bot?start=ref{user_id}"
+    ref_link = f"https://t.me/psych_tests_bot?start=ref{user_id}"
 
     if score <= 25:
         call_to_action = f"✨ Хотите сделать ваши отношения ещё глубже и осознаннее? Отправьте эту ссылку **2 друзьям**:\n{ref_link}\n\nКогда оба пройдут тест — напишите email, и мы вышлем персональный гайд по укреплению здоровых отношений!"
