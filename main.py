@@ -62,12 +62,6 @@ def get_back_button():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_tests")]
     ])
-def get_test_info_menu():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="ℹ️ Что это за тест?", callback_data="test_info")],
-        [InlineKeyboardButton(text="✅ Начать тест", callback_data="start_test")],
-        [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_tests")]
-    ])
 # === ХЕНДЛЕРЫ ===
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
@@ -107,14 +101,7 @@ async def cmd_start(message: Message, state: FSMContext):
         ])
         await message.answer("Пожалуйста, подпишитесь на наш канал, чтобы пройти тест ❤️", reply_markup=kb)
         return
-    # Приветственное сообщение
-    welcome_text = (
-        "👋 Добро пожаловать в бот для психологических тестов!\n"
-        "Вы можете бесплатно пройти тесты и получить результаты.\n"
-        "Проверьте себя, узнайте больше о себе и своих отношениях.\n"
-        "Выберите раздел:"
-    )
-    await message.answer(welcome_text, reply_markup=get_main_menu())
+    await message.answer("Выберите раздел:", reply_markup=get_main_menu())
 @router.message(F.text == "🧠 Психологические тесты")
 async def show_tests(message: Message):
     await message.answer("Выберите тест:", reply_markup=get_tests_menu())
@@ -125,35 +112,12 @@ async def back_to_menu(callback: CallbackQuery):
 async def back_to_tests(callback: CallbackQuery):
     await callback.message.answer("Выберите тест:", reply_markup=get_tests_menu())
 @router.callback_query(F.data == "test_attachment")
-async def test_selected(callback: CallbackQuery, state: FSMContext):
-    await callback.message.answer(
-        f"🔹 Тест: «{TEST_DATA['title']}»\n"
-        f"{TEST_DATA['description']}\n"
-        "Что вы узнаете:\n"
-        "- Какие у вас типы привязанности\n"
-        "- Сильные и слабые стороны ваших отношений\n"
-        "- Как улучшить свои отношения\n"
-        "Готовы начать?",
-        reply_markup=get_test_info_menu()
-    )
-@router.callback_query(F.data == "test_info")
-async def show_test_info(callback: CallbackQuery):
-    await callback.message.edit_text(
-        f"🔹 Тест: «{TEST_DATA['title']}»\n"
-        f"{TEST_DATA['description']}\n"
-        "Что вы узнаете:\n"
-        "- Какие у вас типы привязанности\n"
-        "- Сильные и слабые стороны ваших отношений\n"
-        "- Как улучшить свои отношения",
-        reply_markup=get_test_info_menu()
-    )
-@router.callback_query(F.data == "start_test")
 async def start_test(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     fake_count = random.randint(1200, 1500)
     await callback.message.answer(
-        f"Вы — 1 из {fake_count} прошедших тест в этом месяце! 🌟\n"
-        f"{TEST_DATA['description']}",
+        f"Вы — 1 из {fake_count} прошедших тест в этом месяце! 🌟
+{TEST_DATA['description']}",
         reply_markup=get_back_button()
     )
     await ask_question(callback.message, user_id, state)
@@ -171,7 +135,8 @@ async def ask_question(message: Message, user_id: int, state: FSMContext):
         [InlineKeyboardButton(text=f"Г) {question['options'][3]}", callback_data="ans_3")],
         [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_tests")]
     ])
-    await message.answer(f"Вопрос {q_index + 1} из {len(TEST_DATA['questions'])}:\n{question['text']}", reply_markup=kb)
+    await message.answer(f"Вопрос {q_index + 1} из {len(TEST_DATA['questions'])}:
+{question['text']}", reply_markup=kb)
     await state.set_state(TestState.answering)
 @router.callback_query(TestState.answering)
 async def handle_answer(callback: CallbackQuery, state: FSMContext):
@@ -190,21 +155,30 @@ async def show_result(message: Message, user_id: int):
     result = next((r for r in TEST_DATA["results"] if r["min"] <= score <= r["max"]), TEST_DATA["results"][-1])
     ref_link = f"https://t.me/my_psych_tester_bot?start=ref{user_id}"
     if score <= 25:
-        call_to_action = f"✨ Хотите сделать ваши отношения ещё глубже и осознаннее? Отправьте эту ссылку **2 друзьям**:\n{ref_link}\nКогда оба пройдут тест — напишите email, и мы вышлем персональный гайд по укреплению здоровых отношений!"
+        call_to_action = f"✨ Хотите сделать ваши отношения ещё глубже и осознаннее? Отправьте эту ссылку **2 друзьям**:
+{ref_link}
+Когда оба пройдут тест — напишите email, и мы вышлем персональный гайд по укреплению здоровых отношений!"
     elif score <= 50:
-        call_to_action = f"✨ Хотите выйти из тревожной привязанности? Отправьте эту ссылку **2 друзьям**:\n{ref_link}\nКогда оба пройдут тест — напишите email, и мы вышлем гайд бесплатно!"
+        call_to_action = f"✨ Хотите выйти из тревожной привязанности? Отправьте эту ссылку **2 друзьям**:
+{ref_link}
+Когда оба пройдут тест — напишите email, и мы вышлем гайд бесплатно!"
     elif score <= 75:
-        call_to_action = f"✨ Вам срочно нужен инструмент, чтобы выйти из эмоциональной ловушки. Отправьте эту ссылку **2 друзьям**:\n{ref_link}\nКогда оба пройдут тест — напишите email, и мы вышлем гайд бесплатно!"
+        call_to_action = f"✨ Вам срочно нужен инструмент, чтобы выйти из эмоциональной ловушки. Отправьте эту ссылку **2 друзьям**:
+{ref_link}
+Когда оба пройдут тест — напишите email, и мы вышлем гайд бесплатно!"
     else:
-        call_to_action = f"✨ Это кризис, и вам нужна поддержка. Отправьте эту ссылку **2 друзьям**:\n{ref_link}\nКогда оба пройдут тест — напишите email, и мы вышлем гайд с первыми шагами к восстановлению себя."
-    text = f"💔 Ваш результат: **{result['title']}**\n{result['text']}\n{call_to_action}"
+        call_to_action = f"✨ Это кризис, и вам нужна поддержка. Отправьте эту ссылку **2 друзьям**:
+{ref_link}
+Когда оба пройдут тест — напишите email, и мы вышлем гайд с первыми шагами к восстановлению себя."
+    text = f"💔 Ваш результат: **{result['title']}**
+{result['text']}
+{call_to_action}"
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📧 Отправить email", callback_data="request_email")],
         [InlineKeyboardButton(text="💝 Поддержать автора", url=DONATE_SBP)],
         [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_tests")]
     ])
-    # Используем HTML, чтобы избежать ошибок парсинга
-    await message.answer(text, reply_markup=kb, parse_mode="HTML")
+    await message.answer(text, reply_markup=kb, parse_mode="Markdown")
 @router.callback_query(F.data == "request_email")
 async def request_email(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
@@ -213,8 +187,11 @@ async def request_email(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer(f"Пока что прошёл(и) {friends} друг(а). Нужно 2, чтобы получить гайд.")
         return
     await callback.message.answer(
-        "📧 Введите ваш email:\n"
-        "✅ Нажимая «Отправить», вы даёте согласие на обработку персональных данных в соответствии с ФЗ-152."
+        "📧 Введите ваш email:
+"
+        "✅ Нажимая «Отправить», вы даёте согласие на обработку персональных данных в соответствии с ФЗ-152.
+"
+        "❗ Гайд будет отправлен на этот email в течение 24 часов. Проверьте папку «Спам», если не получили письмо."
     )
     await state.set_state(TestState.waiting_for_email)
 @router.message(TestState.waiting_for_email)
@@ -225,13 +202,14 @@ async def handle_email(message: Message, state: FSMContext):
         return
     user_id = message.from_user.id
     await send_to_sheet("email_submitted", user_id, email=email)
-    await message.answer("Спасибо! Гайд придёт на ваш email в ближайшее время.")
+    await message.answer("Спасибо! Гайд придёт на ваш email в течение 24 часов. Проверьте папку «Спам», если не получили письмо.")
     await state.clear()
 @router.callback_query(F.data == "check_sub")
 async def check_sub(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     if await check_subscription(user_id):
-        await callback.message.edit_text("Спасибо за подписку! ❤️\nНачинаем тест...")
+        await callback.message.edit_text("Спасибо за подписку! ❤️
+Начинаем тест...")
         await ask_question(callback.message, user_id, state)
     else:
         await callback.answer("Вы не подписаны! Подпишитесь, пожалуйста.", show_alert=True)
