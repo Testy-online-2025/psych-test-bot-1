@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.INFO)
 # === ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID")
-DONATE_SBP = os.getenv("DONATE_SBP", "https://example.com  ")
+DONATE_SBP = os.getenv("DONATE_SBP", "https://example.com")
 GOOGLE_SCRIPT_URL = os.getenv("GOOGLE_SCRIPT_URL", "")
 
 bot = Bot(token=BOT_TOKEN)
@@ -141,6 +141,7 @@ async def ask_question(message: Message, user_id: int, state: FSMContext):
     q_index = user_sessions[user_id]["current_question"]
     if q_index >= len(TEST_DATA["questions"]):
         user_sessions[user_id]["done"] = True
+        await state.clear()  # 👈 СБРАСЫВАЕМ СОСТОЯНИЕ FSM
         await show_result(message, user_id)
         return
     question = TEST_DATA["questions"][q_index]
@@ -152,7 +153,9 @@ async def ask_question(message: Message, user_id: int, state: FSMContext):
         [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_tests")]
     ])
     await message.answer(f"Вопрос {q_index + 1} из {len(TEST_DATA['questions'])}:\n{question['text']}", reply_markup=kb)
-    await state.set_state(TestState.answering)
+    # Устанавливаем состояние только при первом вопросе
+    if q_index == 0:
+        await state.set_state(TestState.answering)
 
 @router.callback_query(TestState.answering)
 async def handle_answer(callback: CallbackQuery, state: FSMContext):
@@ -165,6 +168,7 @@ async def handle_answer(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         await ask_question(callback.message, user_id, state)
     elif data == "back_to_tests":
+        await state.clear()  # 👈 Сбрасываем состояние при выходе
         await callback.message.answer("Выберите тест:", reply_markup=get_tests_menu())
 
 async def show_result(message: Message, user_id: int):
