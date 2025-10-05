@@ -3,6 +3,7 @@ import json
 import logging
 import random
 import aiohttp
+import re
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import (
     Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup,
@@ -38,7 +39,13 @@ class TestState(StatesGroup):
 # Временное хранилище
 user_sessions = {}
 
-# === ФУНКЦИИ ===
+# === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
+
+def escape_markdown_v2(text: str) -> str:
+    """Экранирует спецсимволы для MarkdownV2 в Telegram"""
+    escape_chars = r'_*[]()~`>#+-=|{}.!'
+    return re.sub(r'([%s])' % re.escape(escape_chars), r'\\\1', text)
+
 async def send_to_sheet(action: str, user_id: int, **kwargs):
     if not GOOGLE_SCRIPT_URL:
         return
@@ -75,6 +82,7 @@ def get_back_button():
     ])
 
 # === ХЕНДЛЕРЫ ===
+
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
     user_id = message.from_user.id
@@ -86,7 +94,6 @@ async def cmd_start(message: Message, state: FSMContext):
         if ref.startswith("ref"):
             try:
                 referrer_id = int(ref[3:])
-                # Уведомляем реферера
                 if referrer_id in user_sessions:
                     user_sessions[referrer_id]["friends_completed"] = user_sessions[referrer_id].get("friends_completed", 0) + 1
                     fc = user_sessions[referrer_id]["friends_completed"]
@@ -103,7 +110,6 @@ async def cmd_start(message: Message, state: FSMContext):
         "referrer": referrer_id,
         "friends_completed": 0
     }
-    # Отправка в Google Sheets
     ref_link = f"https://t.me/my_psych_tester_bot?start=ref{user_id}"
     await send_to_sheet("new_user", user_id, username=username, ref_link=ref_link)
     if not await check_subscription(user_id):
@@ -141,7 +147,7 @@ async def ask_question(message: Message, user_id: int, state: FSMContext):
     q_index = user_sessions[user_id]["current_question"]
     if q_index >= len(TEST_DATA["questions"]):
         user_sessions[user_id]["done"] = True
-        await state.clear()  # 👈 СБРАСЫВАЕМ СОСТОЯНИЕ FSM
+        await state.clear()  # 👈 КРИТИЧЕСКИ ВАЖНО: сброс состояния
         await show_result(message, user_id)
         return
     question = TEST_DATA["questions"][q_index]
@@ -153,7 +159,6 @@ async def ask_question(message: Message, user_id: int, state: FSMContext):
         [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_tests")]
     ])
     await message.answer(f"Вопрос {q_index + 1} из {len(TEST_DATA['questions'])}:\n{question['text']}", reply_markup=kb)
-    # Устанавливаем состояние только при первом вопросе
     if q_index == 0:
         await state.set_state(TestState.answering)
 
@@ -168,7 +173,7 @@ async def handle_answer(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         await ask_question(callback.message, user_id, state)
     elif data == "back_to_tests":
-        await state.clear()  # 👈 Сбрасываем состояние при выходе
+        await state.clear()
         await callback.message.answer("Выберите тест:", reply_markup=get_tests_menu())
 
 async def show_result(message: Message, user_id: int):
@@ -183,13 +188,21 @@ async def show_result(message: Message, user_id: int):
         call_to_action = f"✨ Вам срочно нужен инструмент, чтобы выйти из эмоциональной ловушки. Отправьте эту ссылку **2 друзьям**:\n{ref_link}\nКогда оба пройдут тест — напишите email, и мы вышлем гайд бесплатно!"
     else:
         call_to_action = f"✨ Это кризис, и вам нужна поддержка. Отправьте эту ссылку **2 друзьям**:\n{ref_link}\nКогда оба пройдут тест — напишите email, и мы вышлем гайд с первыми шагами к восстановлению себя."
-    text = f"💔 Ваш результат: **{result['title']}**\n{result['text']}\n{call_to_action}"
+
+    # Экранируем всё для MarkdownV2
+    escaped_title = escape_markdown_v2(result['title'])
+    escaped_text = escape_markdown_v2(result['text'])
+    escaped_call_to_action = escape_markdown_v2(call_to_action)
+
+    text = f"💔 Ваш результат: *{escaped_title}*\n{escaped_text}\n{escaped_call_to_action}"
+
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📧 Отправить email", callback_data="request_email")],
         [InlineKeyboardButton(text="💝 Поддержать автора", url=DONATE_SBP)],
         [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_tests")]
     ])
-    await message.answer(text, reply_markup=kb, parse_mode="Markdown")
+
+    await message.answer(text, reply_markup=kb, parse_mode="MarkdownV2")
 
 @router.callback_query(F.data == "request_email")
 async def request_email(callback: CallbackQuery, state: FSMContext):
