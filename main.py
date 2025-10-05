@@ -116,10 +116,10 @@ async def start_test(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     fake_count = random.randint(1200, 1500)
     await callback.message.answer(
-        f"Вы — 1 из {fake_count} прошедших тест в этом месяце! 🌟
-{TEST_DATA['description']}",
-        reply_markup=get_back_button()
-    )
+    await callback.message.answer(
+    f"Вы — 1 из {fake_count} прошедших тест в этом месяце! 🌟\n{TEST_DATA['description']}",
+    reply_markup=get_back_button()
+)
     await ask_question(callback.message, user_id, state)
 async def ask_question(message: Message, user_id: int, state: FSMContext):
     q_index = user_sessions[user_id]["current_question"]
