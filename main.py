@@ -16,6 +16,7 @@ from aiogram.filters import Command, CommandStart
 
 logging.basicConfig(level=logging.INFO)
 
+# === ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID")
 DONATE_SBP = os.getenv("DONATE_SBP", "https://example.com")
@@ -26,18 +27,47 @@ storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 router = Router()
 
+# Загрузка теста
 with open("data/test1.json", "r", encoding="utf-8") as f:
     TEST_DATA = json.load(f)
 
+# FSM
 class TestState(StatesGroup):
     answering = State()
     waiting_for_email = State()
 
+# Временное хранилище
 user_sessions = {}
 
+# === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
+
 def escape_markdown_v2(text: str) -> str:
+    """Экранирует спецсимволы для MarkdownV2"""
     escape_chars = r'_*[]()~`>#+-=|{}.!'
     return re.sub(r'([%s])' % re.escape(escape_chars), r'\\\1', text)
+
+def get_email_button():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📧 Да, я хочу получить гайд", callback_data="request_email")]
+    ])
+
+def get_test_menu_after_email():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🧠 Выбрать другой тест", callback_data="back_to_tests")]
+    ])
+
+def get_tests_menu():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💔 Тип привязанности", callback_data="test_attachment")],
+        [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_menu")]
+    ])
+
+def get_main_menu():
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="🧠 Психологические тесты")]],
+        resize_keyboard=True,
+        one_time_keyboard=False
+    )
 
 async def send_to_sheet(action: str, user_id: int, **kwargs):
     if not GOOGLE_SCRIPT_URL:
@@ -56,33 +86,7 @@ async def check_subscription(user_id: int) -> bool:
     except:
         return False
 
-def get_main_menu():
-    return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="🧠 Психологические тесты")]],
-        resize_keyboard=True,
-        one_time_keyboard=False
-    )
-
-def get_tests_menu():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💔 Тип привязанности", callback_data="test_attachment")],
-        [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_menu")]
-    ])
-
-def get_back_button():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_tests")]
-    ])
-
-def get_email_button():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📧 Да, я хочу получить гайд", callback_data="request_email")]
-    ])
-
-def get_test_menu_after_email():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🧠 Выбрать другой тест", callback_data="back_to_tests")]
-    ])
+# === ХЕНДЛЕРЫ ===
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
@@ -100,8 +104,13 @@ async def cmd_start(message: Message, state: FSMContext):
                     if fc == 1:
                         await bot.send_message(referrer_id, "✅ Один друг уже прошёл тест! Ждём второго — и вы получите гайд.")
                     elif fc >= 2:
-                        await bot.send_message(referrer_id, "🎉 Два друга прошли тест! Напишите свой email, и мы вышлем гайд.", reply_markup=get_email_button())
-            except:
+                        await bot.send_message(
+                            referrer_id,
+                            "🎉 Два друга прошли тест! Напишите свой email, и мы вышлем гайд.",
+                            reply_markup=get_email_button()
+                        )
+            except Exception as e:
+                logging.error(f"Ошибка при обработке реферала: {e}")
                 pass
     user_sessions[user_id] = {
         "score": 0,
@@ -138,8 +147,7 @@ async def start_test(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     fake_count = random.randint(1200, 1500)
     await callback.message.answer(
-        f"Вы — 1 из {fake_count} прошедших тест в этом месяце! 🌟\n{TEST_DATA['description']}",
-        reply_markup=get_back_button()
+        f"Вы — 1 из {fake_count} прошедших тест в этом месяце! 🌟\n{TEST_DATA['description']}"
     )
     await ask_question(callback.message, user_id, state)
 
@@ -190,7 +198,10 @@ async def show_result(message: Message, user_id: int):
         [InlineKeyboardButton(text="💝 Поддержать автора", url=DONATE_SBP)],
         [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_tests")]
     ])
-    await message.answer(text, reply_markup=kb, parse_mode="MarkdownV2")
+    try:
+        await message.answer(text, reply_markup=kb, parse_mode="MarkdownV2")
+    except Exception as e:
+        logging.error(f"Ошибка отправки результата пользователю {user_id}: {e}")
 
 @router.callback_query(F.data == "request_email")
 async def request_email(callback: CallbackQuery, state: FSMContext):
@@ -214,27 +225,6 @@ async def handle_email(message: Message, state: FSMContext):
         return
     user_id = message.from_user.id
     score = user_sessions.get(user_id, {}).get("score", 0)
-    # Отправляем в Google Таблицу email + score
     await send_to_sheet("email_submitted", user_id, email=email, score=score)
     await message.answer(
-        "Спасибо! Гайд придёт на ваш email в течение 24 часов. Проверьте папку «Спам», если не получили письмо.",
-        reply_markup=get_test_menu_after_email()
-    )
-    await state.clear()
-
-@router.callback_query(F.data == "check_sub")
-async def check_sub(callback: CallbackQuery, state: FSMContext):
-    user_id = callback.from_user.id
-    if await check_subscription(user_id):
-        await callback.message.edit_text("Спасибо за подписку! ❤️\nНачинаем тест...")
-        await ask_question(callback.message, user_id, state)
-    else:
-        await callback.answer("Вы не подписаны! Подпишитесь, пожалуйста.", show_alert=True)
-
-async def main():
-    dp.include_router(router)
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main()) 
+        "Спасибо
