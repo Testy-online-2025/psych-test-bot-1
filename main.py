@@ -227,4 +227,25 @@ async def handle_email(message: Message, state: FSMContext):
     score = user_sessions.get(user_id, {}).get("score", 0)
     await send_to_sheet("email_submitted", user_id, email=email, score=score)
     await message.answer(
-        "Спасибо
+        "Спасибо! Гайд придёт на ваш email в течение 24 часов. Проверьте папку «Спам», если не получили письмо.",
+        reply_markup=get_test_menu_after_email()
+    )
+    await state.clear()
+
+@router.callback_query(F.data == "check_sub")
+async def check_sub(callback: CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    if await check_subscription(user_id):
+        await callback.message.edit_text("Спасибо за подписку! ❤️\nНачинаем тест...")
+        await ask_question(callback.message, user_id, state)
+    else:
+        await callback.answer("Вы не подписаны! Подпишитесь, пожалуйста.", show_alert=True)
+
+# === ЗАПУСК ===
+async def main():
+    dp.include_router(router)
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
