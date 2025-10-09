@@ -71,20 +71,23 @@ def get_main_menu():
 
 async def send_to_sheet(action: str, user_id: int, **kwargs):
     if not GOOGLE_SCRIPT_URL:
+        logging.warning("GOOGLE_SCRIPT_URL не задан — пропускаем отправку в таблицу")
         return
     try:
+        logging.info(f"📤 Отправляю в Google Sheets: action={action}, user_id={user_id}, данные={kwargs}")
         async with aiohttp.ClientSession() as session:
             payload = {"action": action, "user_id": user_id, **kwargs}
             async with session.post(GOOGLE_SCRIPT_URL, json=payload) as resp:
-                pass  # Явно закрываем ответ
+                logging.info(f"✅ Ответ от Google: статус {resp.status}")
     except Exception as e:
-        logging.error(f"Ошибка отправки в Google Sheets: {e}")
+        logging.error(f"❌ Ошибка отправки в Google Sheets: {e}")
 
 async def check_subscription(user_id: int) -> bool:
     try:
         member = await bot.get_chat_member(CHANNEL_ID, user_id)
         return member.status in ["member", "administrator", "creator"]
-    except:
+    except Exception as e:
+        logging.error(f"Ошибка проверки подписки для user_id={user_id}: {e}")
         return False
 
 # === ХЕНДЛЕРЫ ===
