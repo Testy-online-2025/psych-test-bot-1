@@ -75,7 +75,8 @@ async def send_to_sheet(action: str, user_id: int, **kwargs):
     try:
         async with aiohttp.ClientSession() as session:
             payload = {"action": action, "user_id": user_id, **kwargs}
-            await session.post(GOOGLE_SCRIPT_URL, json=payload)
+            async with session.post(GOOGLE_SCRIPT_URL, json=payload) as resp:
+                pass  # Явно закрываем ответ
     except Exception as e:
         logging.error(f"Ошибка отправки в Google Sheets: {e}")
 
@@ -120,7 +121,13 @@ async def cmd_start(message: Message, state: FSMContext):
         "friends_completed": 0
     }
     ref_link = f"https://t.me/my_psych_tester_bot?start=ref{user_id}"
-    await send_to_sheet("new_user", user_id, username=username, ref_link=ref_link)
+    await send_to_sheet(
+        "new_user",
+        user_id,
+        username=username,
+        ref_link=ref_link,
+        test_name="Тип привязанности"
+    )
     if not await check_subscription(user_id):
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="Подписаться на канал", url=f"https://t.me/{CHANNEL_ID[1:]}")],
@@ -225,7 +232,17 @@ async def handle_email(message: Message, state: FSMContext):
         return
     user_id = message.from_user.id
     score = user_sessions.get(user_id, {}).get("score", 0)
-    await send_to_sheet("email_submitted", user_id, email=email, score=score)
+    result = next((r for r in TEST_DATA["results"] if r["min"] <= score <= r["max"]), TEST_DATA["results"][-1])
+    
+    await send_to_sheet(
+        "email_submitted",
+        user_id,
+        email=email,
+        test_name="Тип привязанности",
+        result_title=result['title'],
+        score=score
+    )
+    
     await message.answer(
         "Спасибо! Гайд придёт на ваш email в течение 24 часов. Проверьте папку «Спам», если не получили письмо.",
         reply_markup=get_test_menu_after_email()
